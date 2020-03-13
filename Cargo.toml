@@ -3,7 +3,9 @@ name = "cmd-args"
 version = "0.1.0"
 authors = ["Benjamin Eder"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MIT"
+description = "Command line argument parser with nested command support"
+readme = "README.md"
+repository = "https://github.com/bennyboer/cmd-args"
 
 [dependencies]
