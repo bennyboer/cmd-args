@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 use std::result;
 use std::rc::Rc;
-use crate::{OptionDescriptor, Group, OptionType, OptionValue, ArgDescriptor, ArgValue};
 use crate::error::ParserError;
+use crate::Group;
+use crate::option;
+use crate::arg;
 
 /// Parser for command line options and arguments.
 pub struct Parser {
     /// Map of anticipated options during parsing.
-    anticipated_options: HashMap<Rc<String>, Rc<OptionDescriptor>>,
+    anticipated_options: HashMap<Rc<String>, Rc<option::Descriptor>>,
 }
 
 /// Type alias for parser results.
@@ -30,7 +32,7 @@ impl Parser {
         // TODO Refactor big method
 
         // Add help option to anticipated options.
-        let help_option_descriptor = OptionDescriptor::new(Parser::HELP_OPTION, OptionType::Bool { default: false }, "Get this information displayed");
+        let help_option_descriptor = option::Descriptor::new(Parser::HELP_OPTION, option::Type::Bool { default: false }, "Get this information displayed");
         self.anticipated_options.insert(help_option_descriptor.take_name(), Rc::new(help_option_descriptor));
 
         // Save root groups options.
@@ -95,7 +97,7 @@ impl Parser {
         // Fill option value lookup with default values for options that have not been specified
         for entry in &self.anticipated_options {
             if !option_value_lookup.contains_key(entry.0.as_ref()) {
-                option_value_lookup.insert(entry.0.to_string(), OptionValue::from_default(entry.1.value_type()));
+                option_value_lookup.insert(entry.0.to_string(), option::Value::from_default(entry.1.value_type()));
             }
         }
 
@@ -103,7 +105,7 @@ impl Parser {
         let arg_descriptors = cur_group.take_arguments();
 
         // Show help if specified as option
-        if let OptionValue::Bool { value } = option_value_lookup.get(Parser::HELP_OPTION).unwrap() {
+        if let option::Value::Bool { value } = option_value_lookup.get(Parser::HELP_OPTION).unwrap() {
             if *value {
                 self.show_help(cur_group, &self.anticipated_options, &arg_descriptors);
                 return Ok(());
@@ -123,7 +125,7 @@ impl Parser {
             let arg = arguments[i];
 
             // Check if argument is parsable using the argument descriptor information
-            let value = match ArgValue::parse(descriptor.value_type(), arg) {
+            let value = match arg::Value::parse(descriptor.value_type(), arg) {
                 Ok(v) => v,
                 Err(_) => return Err(ParserError {
                     message: format!("Expected argument '{}' at position {} to be of type '{}'", arg, i + 1, descriptor.value_type())
@@ -139,7 +141,7 @@ impl Parser {
     }
 
     /// Show help for the passed group configuration.
-    fn show_help(&self, group: &Group, option_descriptors: &HashMap<Rc<String>, Rc<OptionDescriptor>>, arg_descriptors: &Vec<ArgDescriptor>) {
+    fn show_help(&self, group: &Group, option_descriptors: &HashMap<Rc<String>, Rc<option::Descriptor>>, arg_descriptors: &Vec<arg::Descriptor>) {
         println!("\n### DESCRIPTION ###");
         println!("{description}", description = group.description());
 
@@ -210,7 +212,7 @@ impl Parser {
     }
 
     /// Get the option type for the passed option name.
-    fn get_option_type_for_name(&self, option_name: &str) -> Result<&OptionType> {
+    fn get_option_type_for_name(&self, option_name: &str) -> Result<&option::Type> {
         match self.anticipated_options.get(&String::from(option_name)) {
             Some(o) => Ok(o.value_type()),
             None => Err(ParserError {
@@ -219,7 +221,7 @@ impl Parser {
         }
     }
 
-    fn parse_option<'a>(&self, option_arg: &'a str, next_arg: Option<&str>, is_key_value_option: bool) -> Result<(&'a str, OptionValue)> {
+    fn parse_option<'a>(&self, option_arg: &'a str, next_arg: Option<&str>, is_key_value_option: bool) -> Result<(&'a str, option::Value)> {
         let raw_option = option_arg.trim_start_matches(Parser::OPTION_PREFIX); // Strip leading '-' chars
 
         // Check if option is in key-value form '--OPTION_NAME=OPTION_VALUE'
@@ -234,7 +236,7 @@ impl Parser {
                 // Option without value! Only allowed for boolean options.
                 let option_type = self.get_option_type_for_name(raw_option)?;
 
-                if let OptionType::Bool { default: _ } = option_type {
+                if let option::Type::Bool { default: _ } = option_type {
                     "true"
                 } else {
                     return Err(ParserError {
@@ -253,7 +255,7 @@ impl Parser {
             Err(e) => return Err(e),
         };
 
-        let option_value = match OptionValue::parse(option_type, option_value) {
+        let option_value = match option::Value::parse(option_type, option_value) {
             Ok(v) => v,
             Err(_) => return Err(ParserError {
                 message: format!("Expected value '{}' of option '--{}' to be of type '{}'", option_value, option_name, option_type)

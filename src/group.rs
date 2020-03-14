@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::{ArgValue, OptionValue, OptionDescriptor, ArgDescriptor};
+use crate::{option, arg};
 
-type ParserResultConsumer = Box<dyn FnOnce(Vec<ArgValue>, HashMap<String, OptionValue>)>;
+/// Consumer for the parsed result (arguments and options).
+type ParserResultConsumer = Box<dyn FnOnce(Vec<arg::Value>, HashMap<String, option::Value>)>;
 
 /// A group is a collection of possible CLI options and arguments.
 /// Essentially it provides the context of a action called via CLI.
@@ -15,10 +16,10 @@ type ParserResultConsumer = Box<dyn FnOnce(Vec<ArgValue>, HashMap<String, Option
 /// child group and its children.
 pub struct Group {
     /// Descriptors for all anticipated options.
-    options: Option<HashMap<Rc<String>, Rc<OptionDescriptor>>>,
+    options: Option<HashMap<Rc<String>, Rc<option::Descriptor>>>,
 
     /// Descriptors for all anticipated arguments.
-    arguments: Option<Vec<ArgDescriptor>>,
+    arguments: Option<Vec<arg::Descriptor>>,
 
     /// Child groups.
     children: HashMap<String, Group>,
@@ -43,14 +44,14 @@ impl Group {
     }
 
     /// Add an argument to this group.
-    pub fn add_argument(mut self, argument: ArgDescriptor) -> Self {
+    pub fn add_argument(mut self, argument: arg::Descriptor) -> Self {
         self.arguments.as_mut().unwrap().push(argument);
 
         self
     }
 
     /// Take ownership for all specified arguments.
-    pub fn take_arguments(&mut self) -> Vec<ArgDescriptor> {
+    pub fn take_arguments(&mut self) -> Vec<arg::Descriptor> {
         match self.arguments.take() {
             Some(v) => v,
             None => panic!("Argument list has already moved out")
@@ -58,7 +59,7 @@ impl Group {
     }
 
     /// Add an option to this group.
-    pub fn add_option(mut self, option: OptionDescriptor) -> Self {
+    pub fn add_option(mut self, option: option::Descriptor) -> Self {
         assert!(!&self.options.as_ref().unwrap().contains_key(option.name()));
 
         self.options.as_mut().unwrap().insert(option.take_name(), Rc::new(option));
@@ -67,7 +68,7 @@ impl Group {
     }
 
     /// Take ownership of all specified options.
-    pub fn get_options(&mut self) -> &HashMap<Rc<String>, Rc<OptionDescriptor>> {
+    pub fn get_options(&mut self) -> &HashMap<Rc<String>, Rc<option::Descriptor>> {
         self.options.as_ref().unwrap()
     }
 
@@ -97,7 +98,7 @@ impl Group {
     }
 
     /// Call the registered function to consume the parsed arguments and options.
-    pub fn call_consumer(&mut self, args: Vec<ArgValue>, options: HashMap<String, OptionValue>) {
+    pub fn call_consumer(&mut self, args: Vec<arg::Value>, options: HashMap<String, option::Value>) {
         self.consumer.take().unwrap()(args, options);
     }
 
