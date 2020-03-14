@@ -21,6 +21,20 @@ Command line interfaces most likely have a documentation available when calling 
 That one is automatically generated from the command specification!
 
 
-## Examples
+## Example
 
-> **TODO**: Create simple example here and multiple examples in an example directory.
+```rust
+let group = Group::new(Box::new(|args, options| {
+    let test_argument = args[0].str().unwrap();
+    let the_truth = options.get("the-truth").unwrap().int().unwrap();
+
+    println!("Hello from root command with test argument value '{}' and the_truth = '{}'", test_argument, the_truth);
+}), "Simple CLI tool")
+    .add_option(option::Descriptor::new("the-truth", option::Type::Int { default: 42 }, "The truth about everything"))
+    .add_argument(arg::Descriptor::new(arg::Type::Str, "Test text"))
+    .add_child("subcommand", Group::new(Box::new(|args, options| {
+        println!("Hello from subcommand!");
+    }), "A sub command!"));
+
+parser::parse(group).unwrap();
+```

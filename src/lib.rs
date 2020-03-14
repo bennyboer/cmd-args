@@ -10,6 +10,7 @@ pub use group::Group;
 #[cfg(test)]
 mod tests {
     use crate::{Group, option, arg, parser};
+    use std::env;
 
     #[test]
     fn simple() {
@@ -24,7 +25,7 @@ mod tests {
             .add_argument(arg::Descriptor::new(arg::Type::Str, "Test text"));
 
         let args: Vec<&str> = vec!("dummy.exe", "I am a test text!");
-        let result = parser::parse(group, &args[..]);
+        let result = parser::parse_from(group, &args[..]);
 
         assert!(result.is_ok());
     }

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::result;
+use std::{result, env};
 use std::rc::Rc;
 use crate::error::ParserError;
 use crate::Group;
@@ -13,8 +13,16 @@ static OPTION_PREFIX: char = '-';
 static OPTION_KEY_VALUE_SPLIT: char = '=';
 static HELP_OPTION: &'static str = "help";
 
+/// Parse from env::args() using the passed group.
+pub fn parse(group: Group) -> Result<()> {
+    let args: Vec<String> = env::args().collect();
+    let args: Vec<&str> = args.iter().map(AsRef::as_ref).collect();
+
+    parse_from(group, &args[..])
+}
+
 /// Parse the passed command line arguments using the passed group.
-pub fn parse(mut group: Group, args: &[&str]) -> Result<()> {
+pub fn parse_from(mut group: Group, args: &[&str]) -> Result<()> {
     let (ctx_group, anticipated_options, parse_start_pos) = prepare_parsing_context(&mut group, args)?;
     let arg_descriptors = ctx_group.take_arguments();
 
