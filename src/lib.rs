@@ -1,16 +1,15 @@
 mod error;
-mod parser;
 mod group;
 
 pub mod arg;
 pub mod option;
+pub mod parser;
 
-pub use parser::Parser;
 pub use group::Group;
 
 #[cfg(test)]
 mod tests {
-    use crate::{Group, option, arg, Parser};
+    use crate::{Group, option, arg, parser};
 
     #[test]
     fn simple() {
@@ -24,8 +23,8 @@ mod tests {
             .add_option(option::Descriptor::new("the-truth", option::Type::Int { default: 42 }, "The truth about everything"))
             .add_argument(arg::Descriptor::new(arg::Type::Str, "Test text"));
 
-        let args: Vec<String> = vec!(String::from("dummy.exe"), String::from("I am a test text!"));
-        let result = Parser::new().parse(group, &args);
+        let args: Vec<&str> = vec!("dummy.exe", "I am a test text!");
+        let result = parser::parse(group, &args[..]);
 
         assert!(result.is_ok());
     }

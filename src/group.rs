@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::{option, arg};
 
 /// Consumer for the parsed result (arguments and options).
-type ParserResultConsumer = Box<dyn FnOnce(Vec<arg::Value>, HashMap<String, option::Value>)>;
+type ParserResultConsumer = Box<dyn FnOnce(Vec<arg::Value>, HashMap<&str, option::Value>)>;
 
 /// A group is a collection of possible CLI options and arguments.
 /// Essentially it provides the context of a action called via CLI.
@@ -68,7 +68,7 @@ impl Group {
     }
 
     /// Take ownership of all specified options.
-    pub fn get_options(&mut self) -> &HashMap<Rc<String>, Rc<option::Descriptor>> {
+    pub fn get_options(&self) -> &HashMap<Rc<String>, Rc<option::Descriptor>> {
         self.options.as_ref().unwrap()
     }
 
@@ -87,7 +87,7 @@ impl Group {
         &self.children
     }
 
-    /// Take a child group.
+    /// Get a child group.
     pub fn get_mut_child(&mut self, name: &str) -> &mut Group {
         self.children.get_mut(name).unwrap()
     }
@@ -97,9 +97,9 @@ impl Group {
         self.children.contains_key(name)
     }
 
-    /// Call the registered function to consume the parsed arguments and options.
-    pub fn call_consumer(&mut self, args: Vec<arg::Value>, options: HashMap<String, option::Value>) {
-        self.consumer.take().unwrap()(args, options);
+    /// Take the registered function to consume the parsed arguments and options.
+    pub fn take_consumer(&mut self) -> ParserResultConsumer {
+        self.consumer.take().unwrap()
     }
 
     /// Get the description of the group.
