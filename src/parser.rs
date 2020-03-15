@@ -12,7 +12,8 @@ pub type Result<T> = result::Result<T, ParserError>;
 
 static OPTION_PREFIX: char = '-';
 static OPTION_KEY_VALUE_SPLIT: char = '=';
-static HELP_OPTION: &'static str = "help";
+static HELP_OPTION: &str = "help";
+static HELP_OPTION_ALIAS: &str = "?";
 
 /// Options to customize the parser.
 pub struct ParseOptions {
@@ -35,11 +36,11 @@ pub fn parse_from(group: Group, args: &[&str], options: Option<ParseOptions>) ->
     let (ctx_group, anticipated_options, parse_start_pos) = prepare_parsing_context(Rc::clone(&group), args)?;
     let arg_descriptors = ctx_group.get_arguments();
 
-    // TODO Build option descriptor lookup (for aliases)
+    let option_descriptor_lookup = prepare_option_descriptor_lookup(&anticipated_options)?;
 
-    let (raw_options, raw_arguments) = split_raw_arguments(&args[parse_start_pos..], &anticipated_options)?;
+    let (raw_options, raw_arguments) = split_raw_arguments(&args[parse_start_pos..], &option_descriptor_lookup)?;
 
-    let mut option_value_lookup = parse_options(raw_options, &anticipated_options)?;
+    let mut option_value_lookup = parse_options(raw_options, &option_descriptor_lookup)?;
     fill_default_options(&mut option_value_lookup, &anticipated_options);
 
     // Show help if specified as option
@@ -69,7 +70,8 @@ fn prepare_parsing_context<'a>(group: Rc<Group>, args: &[&str]) -> Result<(Rc<Gr
     let mut anticipated_options: HashMap<Rc<String>, Rc<option::Descriptor>> = HashMap::new();
 
     // Add help option to anticipated options.
-    let help_option_descriptor = option::Descriptor::new(HELP_OPTION, option::Type::Bool { default: false }, "Get this information displayed");
+    let help_option_descriptor = option::Descriptor::new(HELP_OPTION, option::Type::Bool { default: false }, "Get this information displayed")
+        .add_alias(HELP_OPTION_ALIAS);
     anticipated_options.insert(help_option_descriptor.take_name(), Rc::new(help_option_descriptor));
 
     // Save root groups options.
@@ -107,10 +109,35 @@ fn prepare_parsing_context<'a>(group: Rc<Group>, args: &[&str]) -> Result<(Rc<Gr
     Ok((cur_group, anticipated_options, args_pos))
 }
 
-/// Get the option type for the passed option name.
-fn get_option_type_for_name<'a>(option_name: &str, anticipated_options: &'a HashMap<Rc<String>, Rc<option::Descriptor>>) -> Result<&'a option::Type> {
-    match anticipated_options.get(&String::from(option_name)) {
-        Some(o) => Ok(o.value_type()),
+/// Prepare a lookup to find option descriptors by their name or alias.
+fn prepare_option_descriptor_lookup(anticipated_options: &HashMap<Rc<String>, Rc<option::Descriptor>>) -> Result<HashMap<&String, &option::Descriptor>> {
+    let mut option_descriptor_lookup = HashMap::new();
+
+    for (option_name, option_descriptor) in anticipated_options {
+        if option_descriptor_lookup.contains_key(option_name.as_ref()) {
+            return Err(ParserError {
+                message: format!("Option name or alias '{}' specified more than once", option_name.as_ref()),
+            });
+        }
+        option_descriptor_lookup.insert(option_name.as_ref(), option_descriptor.as_ref());
+
+        for alias in option_descriptor.get_aliases() {
+            if option_descriptor_lookup.contains_key(alias) {
+                return Err(ParserError {
+                    message: format!("Option name or alias '{}' specified more than once", alias),
+                });
+            }
+            option_descriptor_lookup.insert(alias, option_descriptor.as_ref());
+        }
+    }
+
+    Ok(option_descriptor_lookup)
+}
+
+/// Get the option descriptor for the passed option name.
+fn get_option_descriptor_for_name<'a>(option_name: &str, option_descriptor_lookup: &HashMap<&String, &'a option::Descriptor>) -> Result<&'a option::Descriptor> {
+    match option_descriptor_lookup.get(&String::from(option_name)) {
+        Some(o) => Ok(*o),
         None => Err(ParserError {
             message: format!("Option '--{}' is unknown in the command context", option_name)
         })
@@ -123,7 +150,7 @@ fn is_option(raw_arg: &str) -> bool {
 }
 
 /// Split the passed raw command line arguments into options (name and value) and arguments.
-fn split_raw_arguments<'a>(args: &[&'a str], anticipated_options: &HashMap<Rc<String>, Rc<option::Descriptor>>) -> Result<(HashMap<&'a str, &'a str>, Vec<&'a str>)> {
+fn split_raw_arguments<'a>(args: &[&'a str], option_descriptor_lookup: &HashMap<&String, &option::Descriptor>) -> Result<(HashMap<&'a str, &'a str>, Vec<&'a str>)> {
     let mut raw_options = HashMap::new();
     let mut raw_arguments = Vec::new();
 
@@ -153,7 +180,7 @@ fn split_raw_arguments<'a>(args: &[&'a str], anticipated_options: &HashMap<Rc<St
 
                 let option_value = if is_option_without_value {
                     // Option without value! Only allowed for boolean options.
-                    let option_type = get_option_type_for_name(raw_option, anticipated_options)?;
+                    let option_type = get_option_descriptor_for_name(raw_option, option_descriptor_lookup)?.value_type();
 
                     match option_type {
                         option::Type::Bool { default: _ } => "true",
@@ -180,29 +207,27 @@ fn split_raw_arguments<'a>(args: &[&'a str], anticipated_options: &HashMap<Rc<St
 }
 
 /// Parse raw options to their actual values.
-fn parse_options<'a>(raw_options: HashMap<&'a str, &'a str>, anticipated_options: &HashMap<Rc<String>, Rc<option::Descriptor>>) -> Result<HashMap<&'a str, option::Value>> {
-    let mut option_value_lookup = HashMap::new();
+fn parse_options<'a>(raw_options: HashMap<&str, &str>, option_descriptor_lookup: &HashMap<&String, &'a option::Descriptor>) -> Result<HashMap<&'a str, option::Value>> {
+    let mut option_value_lookup: HashMap<&str, option::Value> = HashMap::new();
 
     for (option_name, raw_value) in raw_options.into_iter() {
-        option_value_lookup.insert(option_name, parse_option(option_name, raw_value, anticipated_options)?);
+        let (option_name, option_value) = parse_option(option_name, raw_value, option_descriptor_lookup)?;
+        option_value_lookup.insert(option_name, option_value);
     }
 
     Ok(option_value_lookup)
 }
 
 /// Parse the passed option (name and raw value).
-fn parse_option(name: &str, raw_value: &str, anticipated_options: &HashMap<Rc<String>, Rc<option::Descriptor>>) -> Result<option::Value> {
-    let option_type = match get_option_type_for_name(name, anticipated_options) {
-        Ok(t) => t,
-        Err(e) => return Err(e),
-    };
+fn parse_option<'a>(name: &str, raw_value: &str, option_descriptor_lookup: &HashMap<&String, &'a option::Descriptor>) -> Result<(&'a String, option::Value)> {
+    let option_descriptor = get_option_descriptor_for_name(name, option_descriptor_lookup)?;
 
-    Ok(match option::Value::parse(option_type, raw_value) {
+    Ok((option_descriptor.name(), match option::Value::parse(option_descriptor.value_type(), raw_value) {
         Ok(v) => v,
         Err(_) => return Err(ParserError {
-            message: format!("Expected value '{}' of option '--{}' to be of type '{}'", raw_value, name, option_type)
+            message: format!("Expected value '{}' of option '--{}' to be of type '{}'", raw_value, name, option_descriptor.value_type())
         })
-    })
+    }))
 }
 
 /// Add all missing options in the lookup with default values.

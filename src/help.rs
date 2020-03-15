@@ -41,7 +41,11 @@ impl HelpPrinter for DefaultHelpPrinter {
             let mut max_length = 0;
             for entry in subcommand_entries {
                 let prefix = match group.get_aliases_for_group_name(&entry.key) {
-                    Some(aliases) => format!("{name} ({aliases})", name = entry.key, aliases = aliases.iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>().join(", ")),
+                    Some(aliases) => format!(
+                        "{name} ({aliases})",
+                        name = entry.key,
+                        aliases = aliases.iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>().join(", ")
+                    ),
                     None => entry.key.to_string(),
                 };
                 if prefix.len() > max_length {
@@ -51,7 +55,11 @@ impl HelpPrinter for DefaultHelpPrinter {
 
             for entry in subcommand_entries {
                 let prefix = match group.get_aliases_for_group_name(&entry.key) {
-                    Some(aliases) => format!("{name} ({aliases})", name = entry.key, aliases = aliases.iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>().join(", ")),
+                    Some(aliases) => format!(
+                        "{name} ({aliases})",
+                        name = entry.key,
+                        aliases = aliases.iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>().join(", ")
+                    ),
                     None => entry.key.to_string(),
                 };
                 println!("  - {prefix:<width$} | {description}", prefix = prefix, width = max_length, description = entry.value.description());
@@ -65,14 +73,34 @@ impl HelpPrinter for DefaultHelpPrinter {
             // Get longest option name
             let mut max_length = 0;
             for entry in option_entries {
-                let prefix = format!("{name} <{type_name}>", name = entry.key, type_name = entry.value.value_type());
+                let aliases = entry.value.get_aliases();
+                let prefix = if aliases.len() == 0 {
+                    format!("{name} <{type_name}>", name = entry.key, type_name = entry.value.value_type())
+                } else {
+                    format!(
+                        "{name} ({aliases}) <{type_name}>",
+                        name = entry.key,
+                        aliases = aliases.iter().map(|s| format!("-{}", s)).collect::<Vec<String>>().join(", "),
+                        type_name = entry.value.value_type()
+                    )
+                };
                 if prefix.len() > max_length {
                     max_length = prefix.len();
                 }
             }
 
             for entry in option_entries {
-                let prefix = format!("{name} <{type_name}>", name = entry.key, type_name = entry.value.value_type());
+                let aliases = entry.value.get_aliases();
+                let prefix = if aliases.len() == 0 {
+                    format!("{name} <{type_name}>", name = entry.key, type_name = entry.value.value_type())
+                } else {
+                    format!(
+                        "{name} ({aliases}) <{type_name}>",
+                        name = entry.key,
+                        aliases = aliases.iter().map(|s| format!("-{}", s)).collect::<Vec<String>>().join(", "),
+                        type_name = entry.value.value_type()
+                    )
+                };
                 println!("  --{prefix:<width$} | {description}", prefix = prefix, width = max_length, description = entry.value.description());
             }
         }

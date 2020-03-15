@@ -1,9 +1,11 @@
 use std::rc::Rc;
 use crate::option;
+use std::collections::HashSet;
 
 /// Description of an option.
 pub struct Descriptor {
     name: Rc<String>,
+    aliases: HashSet<String>,
     value_type: option::Type,
     description: String,
 }
@@ -13,6 +15,7 @@ impl Descriptor {
     pub fn new(name: &str, value_type: option::Type, description: &str) -> Self {
         Descriptor {
             name: Rc::new(String::from(name)),
+            aliases: HashSet::new(),
             value_type,
             description: String::from(description),
         }
@@ -36,5 +39,17 @@ impl Descriptor {
     /// Get the description of the option.
     pub fn description(&self) -> &String {
         &self.description
+    }
+
+    /// Add an alias to the option.
+    pub fn add_alias(mut self, alias: &str) -> Self {
+        self.aliases.insert(String::from(alias));
+
+        self
+    }
+
+    /// Get aliases.
+    pub fn get_aliases(&self) -> &HashSet<String> {
+        &self.aliases
     }
 }
