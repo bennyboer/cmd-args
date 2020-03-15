@@ -240,7 +240,7 @@ pub trait HelpPrinter {
     /// Print the help documentation.
     fn print(
         &self,
-        description: &str,
+        group: &Group,
         subcommand_entries: &Vec<HelpEntry<&Rc<String>, &Rc<Group>>>,
         option_entries: &Vec<HelpEntry<&Rc<String>, &Rc<option::Descriptor>>>,
         arg_entries: &Vec<arg::Descriptor>,
@@ -252,13 +252,13 @@ struct DefaultHelpPrinter {}
 impl HelpPrinter for DefaultHelpPrinter {
     fn print(
         &self,
-        description: &str,
+        group: &Group,
         subcommand_entries: &Vec<HelpEntry<&Rc<String>, &Rc<Group>>>,
         option_entries: &Vec<HelpEntry<&Rc<String>, &Rc<option::Descriptor>>>,
         arg_entries: &Vec<arg::Descriptor>,
     ) {
         println!("\n### DESCRIPTION ###");
-        println!("{description}", description = description);
+        println!("{description}", description = group.description());
 
         println!("\n### SUB-COMMANDS ###");
         if subcommand_entries.len() == 0 {
@@ -267,13 +267,21 @@ impl HelpPrinter for DefaultHelpPrinter {
             // Get longest sub-command name
             let mut max_length = 0;
             for entry in subcommand_entries {
-                if entry.key.len() > max_length {
-                    max_length = entry.key.len();
+                let prefix = match group.get_aliases_for_group_name(&entry.key) {
+                    Some(aliases) => format!("{name} ({aliases})", name = entry.key, aliases = aliases.iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>().join(", ")),
+                    None => entry.key.to_string(),
+                };
+                if prefix.len() > max_length {
+                    max_length = prefix.len();
                 }
             }
 
             for entry in subcommand_entries {
-                println!("  - {name:<width$} | {description}", name = entry.key, width = max_length, description = entry.value.description());
+                let prefix = match group.get_aliases_for_group_name(&entry.key) {
+                    Some(aliases) => format!("{name} ({aliases})", name = entry.key, aliases = aliases.iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>().join(", ")),
+                    None => entry.key.to_string(),
+                };
+                println!("  - {prefix:<width$} | {description}", prefix = prefix, width = max_length, description = entry.value.description());
             }
         }
 
@@ -345,5 +353,5 @@ fn show_help(group: &Group, option_descriptors: &HashMap<Rc<String>, Rc<option::
     option_entries.sort_by(|a, b| a.key.cmp(b.key));
 
     let help_printer = DefaultHelpPrinter {};
-    help_printer.print(group.description(), &subcommand_entries, &option_entries, arg_descriptors);
+    help_printer.print(group, &subcommand_entries, &option_entries, arg_descriptors);
 }
