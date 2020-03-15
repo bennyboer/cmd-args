@@ -2,9 +2,10 @@ use std::collections::HashMap;
 use std::{result, env};
 use std::rc::Rc;
 use crate::error::ParserError;
-use crate::Group;
+use crate::{Group, HelpEntry, HelpPrinter};
 use crate::option;
 use crate::arg;
+use crate::help::DefaultHelpPrinter;
 
 /// Type alias for parser results.
 pub type Result<T> = result::Result<T, ParserError>;
@@ -13,16 +14,22 @@ static OPTION_PREFIX: char = '-';
 static OPTION_KEY_VALUE_SPLIT: char = '=';
 static HELP_OPTION: &'static str = "help";
 
+/// Options to customize the parser.
+pub struct ParseOptions {
+    /// Specify a custom help printer or the default one will be used.
+    pub help_printer: Option<Box<dyn HelpPrinter>>,
+}
+
 /// Parse from env::args() using the passed group.
-pub fn parse(group: Group) -> Result<()> {
+pub fn parse(group: Group, options: Option<ParseOptions>) -> Result<()> {
     let args: Vec<String> = env::args().collect();
     let args: Vec<&str> = args.iter().map(AsRef::as_ref).collect();
 
-    parse_from(group, &args[..])
+    parse_from(group, &args[..], options)
 }
 
 /// Parse the passed command line arguments using the passed group.
-pub fn parse_from(group: Group, args: &[&str]) -> Result<()> {
+pub fn parse_from(group: Group, args: &[&str], options: Option<ParseOptions>) -> Result<()> {
     let group = Rc::new(group);
 
     let (ctx_group, anticipated_options, parse_start_pos) = prepare_parsing_context(Rc::clone(&group), args)?;
@@ -38,7 +45,12 @@ pub fn parse_from(group: Group, args: &[&str]) -> Result<()> {
     // Show help if specified as option
     if let option::Value::Bool { value } = option_value_lookup.get(HELP_OPTION).unwrap() {
         if *value {
-            show_help(&ctx_group, &anticipated_options, arg_descriptors);
+            show_help(
+                &ctx_group,
+                &anticipated_options,
+                arg_descriptors,
+                if options.is_some() { options.unwrap().help_printer } else { None },
+            );
             return Ok(());
         }
     }
@@ -229,109 +241,8 @@ fn parse_arguments(descriptors: &Vec<arg::Descriptor>, raw_arguments: Vec<&str>)
     Ok(argument_values)
 }
 
-/// Entry in the help documentation.
-pub struct HelpEntry<K, V> {
-    key: K,
-    value: V,
-}
-
-/// Help formatter to use when printing the help documentation.
-pub trait HelpPrinter {
-    /// Print the help documentation.
-    fn print(
-        &self,
-        group: &Group,
-        subcommand_entries: &Vec<HelpEntry<&Rc<String>, &Rc<Group>>>,
-        option_entries: &Vec<HelpEntry<&Rc<String>, &Rc<option::Descriptor>>>,
-        arg_entries: &Vec<arg::Descriptor>,
-    );
-}
-
-struct DefaultHelpPrinter {}
-
-impl HelpPrinter for DefaultHelpPrinter {
-    fn print(
-        &self,
-        group: &Group,
-        subcommand_entries: &Vec<HelpEntry<&Rc<String>, &Rc<Group>>>,
-        option_entries: &Vec<HelpEntry<&Rc<String>, &Rc<option::Descriptor>>>,
-        arg_entries: &Vec<arg::Descriptor>,
-    ) {
-        println!("\n### DESCRIPTION ###");
-        println!("{description}", description = group.description());
-
-        println!("\n### SUB-COMMANDS ###");
-        if subcommand_entries.len() == 0 {
-            println!("(No sub-commands available...)");
-        } else {
-            // Get longest sub-command name
-            let mut max_length = 0;
-            for entry in subcommand_entries {
-                let prefix = match group.get_aliases_for_group_name(&entry.key) {
-                    Some(aliases) => format!("{name} ({aliases})", name = entry.key, aliases = aliases.iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>().join(", ")),
-                    None => entry.key.to_string(),
-                };
-                if prefix.len() > max_length {
-                    max_length = prefix.len();
-                }
-            }
-
-            for entry in subcommand_entries {
-                let prefix = match group.get_aliases_for_group_name(&entry.key) {
-                    Some(aliases) => format!("{name} ({aliases})", name = entry.key, aliases = aliases.iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>().join(", ")),
-                    None => entry.key.to_string(),
-                };
-                println!("  - {prefix:<width$} | {description}", prefix = prefix, width = max_length, description = entry.value.description());
-            }
-        }
-
-        println!("\n### OPTIONS ###");
-        if option_entries.len() == 0 {
-            println!("(No options available...)");
-        } else {
-            // Get longest option name
-            let mut max_length = 0;
-            for entry in option_entries {
-                let prefix = format!("{name} <{type_name}>", name = entry.key, type_name = entry.value.value_type());
-                if prefix.len() > max_length {
-                    max_length = prefix.len();
-                }
-            }
-
-            for entry in option_entries {
-                let prefix = format!("{name} <{type_name}>", name = entry.key, type_name = entry.value.value_type());
-                println!("  --{prefix:<width$} | {description}", prefix = prefix, width = max_length, description = entry.value.description());
-            }
-        }
-
-        println!("\n### ARGUMENTS ###");
-        if arg_entries.len() == 0 {
-            println!("(Command expects no arguments...)");
-        } else {
-            let mut max_length = 0;
-            for i in 0..arg_entries.len() {
-                let arg_d = &arg_entries[i];
-
-                let prefix = format!("{num}. <{type_name}>", num = i + 1, type_name = arg_d.value_type());
-                if prefix.len() > max_length {
-                    max_length = prefix.len();
-                }
-            }
-
-            for i in 0..arg_entries.len() {
-                let arg_d = &arg_entries[i];
-
-                let prefix = format!("{num}. <{type_name}>", num = i + 1, type_name = arg_d.value_type());
-                println!("  {prefix:<width$} | {description}", prefix = prefix, width = max_length, description = arg_d.description());
-            }
-        }
-
-        println!();
-    }
-}
-
 /// Show help for the passed group configuration.
-fn show_help(group: &Group, option_descriptors: &HashMap<Rc<String>, Rc<option::Descriptor>>, arg_descriptors: &Vec<arg::Descriptor>) {
+fn show_help(group: &Group, option_descriptors: &HashMap<Rc<String>, Rc<option::Descriptor>>, arg_descriptors: &Vec<arg::Descriptor>, help_printer: Option<Box<dyn HelpPrinter>>) {
     // Collect subcommand entries
     let mut subcommand_entries = Vec::with_capacity(group.get_children().len());
     for (group_name, group) in group.get_children() {
@@ -352,6 +263,8 @@ fn show_help(group: &Group, option_descriptors: &HashMap<Rc<String>, Rc<option::
     }
     option_entries.sort_by(|a, b| a.key.cmp(b.key));
 
-    let help_printer = DefaultHelpPrinter {};
-    help_printer.print(group, &subcommand_entries, &option_entries, arg_descriptors);
+    match help_printer {
+        Some(v) => v.print(group, &subcommand_entries, &option_entries, arg_descriptors),
+        None => DefaultHelpPrinter {}.print(group, &subcommand_entries, &option_entries, arg_descriptors),
+    }
 }

@@ -1,11 +1,13 @@
 mod error;
 mod group;
+mod help;
 
 pub mod arg;
 pub mod option;
 pub mod parser;
 
 pub use group::Group;
+pub use help::{HelpEntry, HelpPrinter};
 
 #[cfg(test)]
 mod tests {
