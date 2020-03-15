@@ -26,7 +26,7 @@ mod tests {
             .add_argument(arg::Descriptor::new(arg::Type::Str, "Test text"));
 
         let args: Vec<&str> = vec!("dummy.exe", "I am a test text!");
-        let result = parser::parse_from(group, &args[..]);
+        let result = parser::parse_from(group, &args[..], None);
 
         assert!(result.is_ok());
     }
@@ -41,7 +41,7 @@ mod tests {
             }), "Group with aliases"));
 
         let args: Vec<&str> = vec!("dummy.exe", "t");
-        let result = parser::parse_from(group, &args[..]);
+        let result = parser::parse_from(group, &args[..], None);
 
         assert!(result.is_ok());
     }
