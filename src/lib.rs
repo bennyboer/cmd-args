@@ -10,7 +10,6 @@ pub use group::Group;
 #[cfg(test)]
 mod tests {
     use crate::{Group, option, arg, parser};
-    use std::env;
 
     #[test]
     fn simple() {
@@ -25,6 +24,21 @@ mod tests {
             .add_argument(arg::Descriptor::new(arg::Type::Str, "Test text"));
 
         let args: Vec<&str> = vec!("dummy.exe", "I am a test text!");
+        let result = parser::parse_from(group, &args[..]);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn group_alias_test() {
+        let group = Group::new(Box::new(|_, _| {
+            assert!(false);
+        }), "Simple group")
+            .add_child("test", Group::new(Box::new(|_, _| {
+                assert!(true);
+            }), "Group with aliases"), Some(vec!("t")));
+
+        let args: Vec<&str> = vec!("dummy.exe", "t");
         let result = parser::parse_from(group, &args[..]);
 
         assert!(result.is_ok());

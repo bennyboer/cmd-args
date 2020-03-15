@@ -22,9 +22,13 @@ pub fn parse(group: Group) -> Result<()> {
 }
 
 /// Parse the passed command line arguments using the passed group.
-pub fn parse_from(mut group: Group, args: &[&str]) -> Result<()> {
-    let (ctx_group, anticipated_options, parse_start_pos) = prepare_parsing_context(&mut group, args)?;
-    let arg_descriptors = ctx_group.take_arguments();
+pub fn parse_from(group: Group, args: &[&str]) -> Result<()> {
+    let group = Rc::new(group);
+
+    let (ctx_group, anticipated_options, parse_start_pos) = prepare_parsing_context(Rc::clone(&group), args)?;
+    let arg_descriptors = ctx_group.get_arguments();
+
+    // TODO Build option descriptor lookup (for aliases)
 
     let (raw_options, raw_arguments) = split_raw_arguments(&args[parse_start_pos..], &anticipated_options)?;
 
@@ -34,31 +38,31 @@ pub fn parse_from(mut group: Group, args: &[&str]) -> Result<()> {
     // Show help if specified as option
     if let option::Value::Bool { value } = option_value_lookup.get(HELP_OPTION).unwrap() {
         if *value {
-            show_help(&ctx_group, &anticipated_options, &arg_descriptors);
+            show_help(&ctx_group, &anticipated_options, arg_descriptors);
             return Ok(());
         }
     }
 
-    let argument_values = parse_arguments(&arg_descriptors, raw_arguments)?;
+    let argument_values = parse_arguments(arg_descriptors, raw_arguments)?;
 
     // Call group consumer.
-    ctx_group.take_consumer()(argument_values, option_value_lookup);
+    ctx_group.get_consumer()(&argument_values, &option_value_lookup);
     Ok(())
 }
 
 /// Prepare the parsing context for the passed group and arguments.
 /// Returns the group context, anticipated options to parse as well as the rest of the raw
 /// command line arguments to parse.
-fn prepare_parsing_context<'a>(group: &'a mut Group, args: &[&str]) -> Result<(&'a mut Group, HashMap<String, Rc<option::Descriptor>>, usize)> {
-    let mut anticipated_options: HashMap<String, Rc<option::Descriptor>> = HashMap::new();
+fn prepare_parsing_context<'a>(group: Rc<Group>, args: &[&str]) -> Result<(Rc<Group>, HashMap<Rc<String>, Rc<option::Descriptor>>, usize)> {
+    let mut anticipated_options: HashMap<Rc<String>, Rc<option::Descriptor>> = HashMap::new();
 
     // Add help option to anticipated options.
     let help_option_descriptor = option::Descriptor::new(HELP_OPTION, option::Type::Bool { default: false }, "Get this information displayed");
-    anticipated_options.insert(help_option_descriptor.name().clone(), Rc::new(help_option_descriptor));
+    anticipated_options.insert(help_option_descriptor.take_name(), Rc::new(help_option_descriptor));
 
     // Save root groups options.
     for (option_name, option_descriptor) in group.get_options() {
-        anticipated_options.insert(option_name.as_ref().clone(), Rc::clone(option_descriptor));
+        anticipated_options.insert(Rc::clone(option_name), Rc::clone(option_descriptor));
     }
 
     // Find command context (via specified groups).
@@ -68,21 +72,22 @@ fn prepare_parsing_context<'a>(group: &'a mut Group, args: &[&str]) -> Result<(&
     for arg in &args[1..] {
         let arg = *arg;
 
-        if cur_group.has_child_name(arg) {
-            cur_group = cur_group.get_mut_child(arg);
+        match cur_group.get_child_known_for(arg) {
+            Some(v) => {
+                cur_group = v;
 
-            // Save current groups options.
-            for (option_name, option_descriptor) in cur_group.get_options() {
-                if anticipated_options.contains_key(option_name as &str) {
-                    return Err(ParserError {
-                        message: format!("Option '{}' declared multiple times in group specifications", option_name)
-                    });
+                // Save current groups options.
+                for (option_name, option_descriptor) in cur_group.get_options() {
+                    if anticipated_options.contains_key(option_name) {
+                        return Err(ParserError {
+                            message: format!("Option '{}' declared multiple times in group specifications", option_name)
+                        });
+                    }
+                    anticipated_options.insert(Rc::clone(option_name), Rc::clone(option_descriptor));
                 }
-                anticipated_options.insert(option_name.as_ref().clone(), Rc::clone(option_descriptor));
             }
-        } else {
-            break; // Command context path found -> Continue with option and argument parsing.
-        }
+            None => break // Command context path found
+        };
 
         args_pos += 1;
     }
@@ -91,8 +96,8 @@ fn prepare_parsing_context<'a>(group: &'a mut Group, args: &[&str]) -> Result<(&
 }
 
 /// Get the option type for the passed option name.
-fn get_option_type_for_name<'a>(option_name: &str, anticipated_options: &'a HashMap<String, Rc<option::Descriptor>>) -> Result<&'a option::Type> {
-    match anticipated_options.get(option_name) {
+fn get_option_type_for_name<'a>(option_name: &str, anticipated_options: &'a HashMap<Rc<String>, Rc<option::Descriptor>>) -> Result<&'a option::Type> {
+    match anticipated_options.get(&String::from(option_name)) {
         Some(o) => Ok(o.value_type()),
         None => Err(ParserError {
             message: format!("Option '--{}' is unknown in the command context", option_name)
@@ -106,7 +111,7 @@ fn is_option(raw_arg: &str) -> bool {
 }
 
 /// Split the passed raw command line arguments into options (name and value) and arguments.
-fn split_raw_arguments<'a>(args: &[&'a str], anticipated_options: &HashMap<String, Rc<option::Descriptor>>) -> Result<(HashMap<&'a str, &'a str>, Vec<&'a str>)> {
+fn split_raw_arguments<'a>(args: &[&'a str], anticipated_options: &HashMap<Rc<String>, Rc<option::Descriptor>>) -> Result<(HashMap<&'a str, &'a str>, Vec<&'a str>)> {
     let mut raw_options = HashMap::new();
     let mut raw_arguments = Vec::new();
 
@@ -163,7 +168,7 @@ fn split_raw_arguments<'a>(args: &[&'a str], anticipated_options: &HashMap<Strin
 }
 
 /// Parse raw options to their actual values.
-fn parse_options<'a>(raw_options: HashMap<&'a str, &'a str>, anticipated_options: &HashMap<String, Rc<option::Descriptor>>) -> Result<HashMap<&'a str, option::Value>> {
+fn parse_options<'a>(raw_options: HashMap<&'a str, &'a str>, anticipated_options: &HashMap<Rc<String>, Rc<option::Descriptor>>) -> Result<HashMap<&'a str, option::Value>> {
     let mut option_value_lookup = HashMap::new();
 
     for (option_name, raw_value) in raw_options.into_iter() {
@@ -174,7 +179,7 @@ fn parse_options<'a>(raw_options: HashMap<&'a str, &'a str>, anticipated_options
 }
 
 /// Parse the passed option (name and raw value).
-fn parse_option(name: &str, raw_value: &str, anticipated_options: &HashMap<String, Rc<option::Descriptor>>) -> Result<option::Value> {
+fn parse_option(name: &str, raw_value: &str, anticipated_options: &HashMap<Rc<String>, Rc<option::Descriptor>>) -> Result<option::Value> {
     let option_type = match get_option_type_for_name(name, anticipated_options) {
         Ok(t) => t,
         Err(e) => return Err(e),
@@ -189,7 +194,7 @@ fn parse_option(name: &str, raw_value: &str, anticipated_options: &HashMap<Strin
 }
 
 /// Add all missing options in the lookup with default values.
-fn fill_default_options<'a>(option_value_lookup: &mut HashMap<&'a str, option::Value>, anticipated_options: &'a HashMap<String, Rc<option::Descriptor>>) {
+fn fill_default_options<'a>(option_value_lookup: &mut HashMap<&'a str, option::Value>, anticipated_options: &'a HashMap<Rc<String>, Rc<option::Descriptor>>) {
     for (option_name, descriptor) in anticipated_options {
         if !option_value_lookup.contains_key(option_name as &str) {
             option_value_lookup.insert(option_name, option::Value::from_default(descriptor.value_type()));
@@ -225,7 +230,7 @@ fn parse_arguments(descriptors: &Vec<arg::Descriptor>, raw_arguments: Vec<&str>)
 }
 
 /// Show help for the passed group configuration.
-fn show_help(group: &Group, option_descriptors: &HashMap<String, Rc<option::Descriptor>>, arg_descriptors: &Vec<arg::Descriptor>) {
+fn show_help(group: &Group, option_descriptors: &HashMap<Rc<String>, Rc<option::Descriptor>>, arg_descriptors: &Vec<arg::Descriptor>) {
     println!("\n### DESCRIPTION ###");
     println!("{description}", description = group.description());
 
