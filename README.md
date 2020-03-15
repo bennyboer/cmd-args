@@ -32,9 +32,9 @@ let group = Group::new(Box::new(|args, options| {
 }), "Simple CLI tool")
     .add_option(option::Descriptor::new("the-truth", option::Type::Int { default: 42 }, "The truth about everything"))
     .add_argument(arg::Descriptor::new(arg::Type::Str, "Test text"))
-    .add_child("subcommand", Group::new(Box::new(|args, options| {
+    .add_child("subcommand", None, Group::new(Box::new(|args, options| {
         println!("Hello from subcommand!");
     }), "A sub command!"));
 
-parser::parse(group).unwrap();
+parser::parse(group, None).unwrap();
 ```
