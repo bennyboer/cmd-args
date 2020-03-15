@@ -229,73 +229,121 @@ fn parse_arguments(descriptors: &Vec<arg::Descriptor>, raw_arguments: Vec<&str>)
     Ok(argument_values)
 }
 
+/// Entry in the help documentation.
+pub struct HelpEntry<K, V> {
+    key: K,
+    value: V,
+}
+
+/// Help formatter to use when printing the help documentation.
+pub trait HelpPrinter {
+    /// Print the help documentation.
+    fn print(
+        &self,
+        description: &str,
+        subcommand_entries: &Vec<HelpEntry<&Rc<String>, &Rc<Group>>>,
+        option_entries: &Vec<HelpEntry<&Rc<String>, &Rc<option::Descriptor>>>,
+        arg_entries: &Vec<arg::Descriptor>,
+    );
+}
+
+struct DefaultHelpPrinter {}
+
+impl HelpPrinter for DefaultHelpPrinter {
+    fn print(
+        &self,
+        description: &str,
+        subcommand_entries: &Vec<HelpEntry<&Rc<String>, &Rc<Group>>>,
+        option_entries: &Vec<HelpEntry<&Rc<String>, &Rc<option::Descriptor>>>,
+        arg_entries: &Vec<arg::Descriptor>,
+    ) {
+        println!("\n### DESCRIPTION ###");
+        println!("{description}", description = description);
+
+        println!("\n### SUB-COMMANDS ###");
+        if subcommand_entries.len() == 0 {
+            println!("(No sub-commands available...)");
+        } else {
+            // Get longest sub-command name
+            let mut max_length = 0;
+            for entry in subcommand_entries {
+                if entry.key.len() > max_length {
+                    max_length = entry.key.len();
+                }
+            }
+
+            for entry in subcommand_entries {
+                println!("  - {name:<width$} | {description}", name = entry.key, width = max_length, description = entry.value.description());
+            }
+        }
+
+        println!("\n### OPTIONS ###");
+        if option_entries.len() == 0 {
+            println!("(No options available...)");
+        } else {
+            // Get longest option name
+            let mut max_length = 0;
+            for entry in option_entries {
+                let prefix = format!("{name} <{type_name}>", name = entry.key, type_name = entry.value.value_type());
+                if prefix.len() > max_length {
+                    max_length = prefix.len();
+                }
+            }
+
+            for entry in option_entries {
+                let prefix = format!("{name} <{type_name}>", name = entry.key, type_name = entry.value.value_type());
+                println!("  --{prefix:<width$} | {description}", prefix = prefix, width = max_length, description = entry.value.description());
+            }
+        }
+
+        println!("\n### ARGUMENTS ###");
+        if arg_entries.len() == 0 {
+            println!("(Command expects no arguments...)");
+        } else {
+            let mut max_length = 0;
+            for i in 0..arg_entries.len() {
+                let arg_d = &arg_entries[i];
+
+                let prefix = format!("{num}. <{type_name}>", num = i + 1, type_name = arg_d.value_type());
+                if prefix.len() > max_length {
+                    max_length = prefix.len();
+                }
+            }
+
+            for i in 0..arg_entries.len() {
+                let arg_d = &arg_entries[i];
+
+                let prefix = format!("{num}. <{type_name}>", num = i + 1, type_name = arg_d.value_type());
+                println!("  {prefix:<width$} | {description}", prefix = prefix, width = max_length, description = arg_d.description());
+            }
+        }
+
+        println!();
+    }
+}
+
 /// Show help for the passed group configuration.
 fn show_help(group: &Group, option_descriptors: &HashMap<Rc<String>, Rc<option::Descriptor>>, arg_descriptors: &Vec<arg::Descriptor>) {
-    println!("\n### DESCRIPTION ###");
-    println!("{description}", description = group.description());
-
-    println!("\n### COMMANDS ###");
-
-    let child_groups = group.get_children();
-
-    if child_groups.len() == 0 {
-        println!("(No commands available...)");
-    } else {
-        // Get longest group name
-        let mut max_length = 0;
-        for g in child_groups {
-            if g.0.len() > max_length {
-                max_length = g.0.len();
-            }
-        }
-
-        for g in child_groups {
-            println!("  - {name:<width$} | {description}", name = g.0, width = max_length, description = g.1.description());
-        }
+    // Collect subcommand entries
+    let mut subcommand_entries = Vec::with_capacity(group.get_children().len());
+    for (group_name, group) in group.get_children() {
+        subcommand_entries.push(HelpEntry {
+            key: group_name,
+            value: group,
+        });
     }
+    subcommand_entries.sort_by(|a, b| a.key.cmp(b.key));
 
-    println!("\n### OPTIONS ###");
-
-    if option_descriptors.len() == 0 {
-        println!("(No options available...)");
-    } else {
-        // Get longest option name
-        let mut max_length = 0;
-        for o in option_descriptors {
-            let prefix = format!("{name} <{type_name}>", name = o.0, type_name = o.1.value_type());
-            if prefix.len() > max_length {
-                max_length = prefix.len();
-            }
-        }
-
-        for o in option_descriptors {
-            let prefix = format!("{name} <{type_name}>", name = o.0, type_name = o.1.value_type());
-            println!("  --{prefix:<width$} | {description}", prefix = prefix, width = max_length, description = o.1.description());
-        }
+    // Collect option entries
+    let mut option_entries = Vec::with_capacity(option_descriptors.len());
+    for (option_name, option_descriptor) in option_descriptors {
+        option_entries.push(HelpEntry {
+            key: option_name,
+            value: option_descriptor,
+        });
     }
+    option_entries.sort_by(|a, b| a.key.cmp(b.key));
 
-    println!("\n### ARGUMENTS ###");
-
-    if arg_descriptors.len() == 0 {
-        println!("(No arguments available...");
-    } else {
-        let mut max_length = 0;
-        for i in 0..arg_descriptors.len() {
-            let arg_d = &arg_descriptors[i];
-
-            let prefix = format!("{num}. <{type_name}>", num = i + 1, type_name = arg_d.value_type());
-            if prefix.len() > max_length {
-                max_length = prefix.len();
-            }
-        }
-
-        for i in 0..arg_descriptors.len() {
-            let arg_d = &arg_descriptors[i];
-
-            let prefix = format!("{num}. <{type_name}>", num = i + 1, type_name = arg_d.value_type());
-            println!("  {prefix:<width$} | {description}", prefix = prefix, width = max_length, description = arg_d.description());
-        }
-    }
-
-    println!();
+    let help_printer = DefaultHelpPrinter {};
+    help_printer.print(group.description(), &subcommand_entries, &option_entries, arg_descriptors);
 }

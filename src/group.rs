@@ -78,7 +78,7 @@ impl Group {
     }
 
     /// Add a child group known by the passed name.
-    pub fn add_child(mut self, name: &str, group: Group, aliases: Option<Vec<&str>>) -> Self {
+    pub fn add_child(mut self, name: &str, aliases: Option<Vec<&str>>, group: Group) -> Self {
         let name = Rc::new(String::from(name));
         let group = Rc::new(group);
 

@@ -34,9 +34,9 @@ mod tests {
         let group = Group::new(Box::new(|_, _| {
             assert!(false);
         }), "Simple group")
-            .add_child("test", Group::new(Box::new(|_, _| {
+            .add_child("test", Some(vec!("t")), Group::new(Box::new(|_, _| {
                 assert!(true);
-            }), "Group with aliases"), Some(vec!("t")));
+            }), "Group with aliases"));
 
         let args: Vec<&str> = vec!("dummy.exe", "t");
         let result = parser::parse_from(group, &args[..]);
